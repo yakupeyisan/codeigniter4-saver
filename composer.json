@@ -1,0 +1,90 @@
+{
+    "name": "yakupeyisan/codeigniter4-saver",
+    "description": "CodeIgniter 4 için kapsamlı dosya kaydetme paketi - Excel, Word, PDF, HTML, CSV ve daha fazlası",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "codeigniter4",
+        "saver",
+        "excel",
+        "word",
+        "pdf",
+        "html",
+        "csv",
+        "export",
+        "file-generator",
+        "document",
+        "phpoffice",
+        "phpspreadsheet",
+        "phpword",
+        "mpdf",
+        "tcpdf"
+    ],
+    "homepage": "https://github.com/yakupeyisan/codeigniter4-saver",
+    "authors": [
+        {
+            "name": "Yakup EYİSAN",
+            "email": "yakupeyisan@gmail.com",
+            "homepage": "https://github.com/yakupeyisan",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/yakupeyisan/codeigniter4-saver/issues",
+        "source": "https://github.com/yakupeyisan/codeigniter4-saver",
+        "docs": "https://github.com/yakupeyisan/codeigniter4-saver/blob/main/README.md"
+    },
+    "require": {
+        "php": "^8.1|^8.2|^8.3",
+        "codeigniter4/framework": "^4.0",
+        "phpoffice/phpspreadsheet": "^1.29|^2.0",
+        "phpoffice/phpword": "^1.2",
+        "tecnickcom/tcpdf": "^6.6",
+        "mpdf/mpdf": "^8.2"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "friendsofphp/php-cs-fixer": "^3.0",
+        "phpstan/phpstan": "^1.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "Yakupeyisan\\CodeIgniter4Saver\\": "src/"
+        },
+        "files": [
+            "src/Helpers/saver_helper.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test-coverage": "phpunit --coverage-html coverage",
+        "format": "php-cs-fixer fix --allow-risky=yes",
+        "format-check": "php-cs-fixer fix --dry-run --diff",
+        "analyse": "phpstan analyse src --level=5",
+        "check": [
+            "@format-check",
+            "@analyse"
+        ]
+    },
+    "scripts-descriptions": {
+        "test": "Run unit tests",
+        "test-coverage": "Run tests with coverage report",
+        "format": "Format code using PHP CS Fixer",
+        "format-check": "Check code formatting",
+        "analyse": "Run static analysis",
+        "check": "Run all checks (format and analysis)"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true,
+        "preferred-install": "dist"
+    }
+}
+
