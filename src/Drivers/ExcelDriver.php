@@ -330,6 +330,12 @@ class ExcelDriver extends BaseDriver
         $filePath = rtrim($path, '/\\') . DIRECTORY_SEPARATOR . $fileName;
 
         $writer = $this->getWriter();
+        
+        // Disable pre-calculation for better performance with large datasets
+        if (count($this->data) > 1000 && $writer instanceof Xlsx) {
+            $writer->setPreCalculateFormulas(false);
+        }
+        
         $writer->save($filePath);
 
         if (!file_exists($filePath)) {
@@ -365,11 +371,32 @@ class ExcelDriver extends BaseDriver
             throw SaverException::forEmptyData();
         }
 
+        // Disable calculation for better performance with large datasets
+        $rowCount = count($this->data);
+        if ($rowCount > 1000) {
+            $this->spreadsheet->getCalculationEngine()->disableCalculationCache();
+            \PhpOffice\PhpSpreadsheet\Calculation\Calculation::getInstance($this->spreadsheet)->clearCalculationCache();
+        }
+
         $sheet = $this->spreadsheet->getActiveSheet();
         $sheet->setTitle($this->sheetTitle);
 
-        // Veriyi yaz
-        $sheet->fromArray($this->data, null, 'A1');
+        // Veriyi yaz - use chunked writing for very large datasets
+        if ($rowCount > 10000) {
+            // Write header first
+            $sheet->fromArray([$this->data[0]], null, 'A1');
+            
+            // Write remaining rows in chunks
+            $chunkSize = 5000;
+            $startRow = 2;
+            for ($i = 1; $i < $rowCount; $i += $chunkSize) {
+                $chunk = array_slice($this->data, $i, $chunkSize);
+                $sheet->fromArray($chunk, null, 'A' . $startRow);
+                $startRow += count($chunk);
+            }
+        } else {
+            $sheet->fromArray($this->data, null, 'A1');
+        }
 
         // İlk satırı başlık olarak kabul et
         if (count($this->data) > 0) {
@@ -395,9 +422,18 @@ class ExcelDriver extends BaseDriver
                 $sheet->getColumnDimension($column)->setWidth($width);
             }
         } else {
-            // Otomatik kolon genişliği
-            foreach (range('A', $sheet->getHighestColumn()) as $column) {
-                $sheet->getColumnDimension($column)->setAutoSize(true);
+            // Otomatik kolon genişliği - skip for large datasets (>5000 rows) for performance
+            $rowCount = count($this->data);
+            if ($rowCount <= 5000) {
+                // Only auto-size for smaller datasets (much faster)
+                foreach (range('A', $sheet->getHighestColumn()) as $column) {
+                    $sheet->getColumnDimension($column)->setAutoSize(true);
+                }
+            } else {
+                // For large datasets, set a reasonable default width to avoid slow auto-sizing
+                foreach (range('A', $sheet->getHighestColumn()) as $column) {
+                    $sheet->getColumnDimension($column)->setWidth(15);
+                }
             }
         }
 
