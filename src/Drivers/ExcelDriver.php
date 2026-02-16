@@ -314,6 +314,7 @@ class ExcelDriver extends BaseDriver
         header('Cache-Control: max-age=0');
 
         $writer = $this->getWriter();
+        $this->applyWriterMemoryOptions($writer);
         $writer->save('php://output');
         exit;
     }
@@ -330,12 +331,7 @@ class ExcelDriver extends BaseDriver
         $filePath = rtrim($path, '/\\') . DIRECTORY_SEPARATOR . $fileName;
 
         $writer = $this->getWriter();
-        
-        // Disable pre-calculation for better performance with large datasets
-        if (count($this->data) > 1000 && $writer instanceof Xlsx) {
-            $writer->setPreCalculateFormulas(false);
-        }
-        
+        $this->applyWriterMemoryOptions($writer);
         $writer->save($filePath);
 
         if (!file_exists($filePath)) {
@@ -354,6 +350,7 @@ class ExcelDriver extends BaseDriver
 
         ob_start();
         $writer = $this->getWriter();
+        $this->applyWriterMemoryOptions($writer);
         $writer->save('php://output');
         $content = ob_get_clean();
 
@@ -381,18 +378,18 @@ class ExcelDriver extends BaseDriver
         $sheet = $this->spreadsheet->getActiveSheet();
         $sheet->setTitle($this->sheetTitle);
 
-        // Veriyi yaz - use chunked writing for very large datasets
-        if ($rowCount > 10000) {
-            // Write header first
+        // Veriyi yaz: Daha büyük batch'ler daha az fromArray çağrısı = daha hızlı.
+        // Chunking sadece çok büyük veri setlerinde (bellek patlamasını önlemek için).
+        $chunkThreshold = 50000;   // Bu satırın üstünde chunk'la
+        $chunkSize = 20000;        // Büyük chunk = daha az iterasyon = daha hızlı
+        if ($rowCount > $chunkThreshold) {
             $sheet->fromArray([$this->data[0]], null, 'A1');
-            
-            // Write remaining rows in chunks
-            $chunkSize = 5000;
             $startRow = 2;
             for ($i = 1; $i < $rowCount; $i += $chunkSize) {
                 $chunk = array_slice($this->data, $i, $chunkSize);
                 $sheet->fromArray($chunk, null, 'A' . $startRow);
                 $startRow += count($chunk);
+                unset($chunk); // Chunk referansını serbest bırak, GC yardımcı olsun
             }
         } else {
             $sheet->fromArray($this->data, null, 'A1');
@@ -533,6 +530,32 @@ class ExcelDriver extends BaseDriver
 
         // Koruma etkinleştir
         $sheet->getProtection()->setSheet(true);
+    }
+
+    /**
+     * Büyük veri setlerinde writer bellek ayarlarını uygular (Xlsx: formül önbelleği kapatma, disk cache).
+     *
+     * @param Xlsx|Xls|Csv $writer
+     * @return void
+     */
+    protected function applyWriterMemoryOptions($writer): void
+    {
+        $rowCount = count($this->data);
+        if (!$writer instanceof Xlsx) {
+            return;
+        }
+        if ($rowCount > 1000) {
+            $writer->setPreCalculateFormulas(false);
+        }
+        if ($rowCount > 5000) {
+            $cacheDir = defined('WRITEPATH') ? (WRITEPATH . 'cache/phpspreadsheet/') : (sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'phpspreadsheet_cache');
+            if (!is_dir($cacheDir)) {
+                @mkdir($cacheDir, 0755, true);
+            }
+            if (is_dir($cacheDir) && is_writable($cacheDir)) {
+                $writer->setUseDiskCaching(true, $cacheDir);
+            }
+        }
     }
 
     /**
