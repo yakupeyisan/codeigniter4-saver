@@ -368,49 +368,41 @@ class ExcelDriver extends BaseDriver
             throw SaverException::forEmptyData();
         }
 
-        // Disable calculation for better performance with large datasets
         $rowCount = count($this->data);
+
+        // Büyük veri setlerinde hesaplama önbelleğini devre dışı bırak
         if ($rowCount > 1000) {
-            $this->spreadsheet->getCalculationEngine()->disableCalculationCache();
-            \PhpOffice\PhpSpreadsheet\Calculation\Calculation::getInstance($this->spreadsheet)->clearCalculationCache();
+            \PhpOffice\PhpSpreadsheet\Calculation\Calculation::getInstance($this->spreadsheet)
+                ->disableCalculationCache();
         }
 
         $sheet = $this->spreadsheet->getActiveSheet();
         $sheet->setTitle($this->sheetTitle);
 
-        // Veriyi yaz: Daha büyük batch'ler daha az fromArray çağrısı = daha hızlı.
-        // Chunking sadece çok büyük veri setlerinde (bellek patlamasını önlemek için).
-        $chunkThreshold = 50000;   // Bu satırın üstünde chunk'la
-        $chunkSize = 20000;        // Büyük chunk = daha az iterasyon = daha hızlı
-        if ($rowCount > $chunkThreshold) {
-            $sheet->fromArray([$this->data[0]], null, 'A1');
-            $startRow = 2;
-            for ($i = 1; $i < $rowCount; $i += $chunkSize) {
-                $chunk = array_slice($this->data, $i, $chunkSize);
-                $sheet->fromArray($chunk, null, 'A' . $startRow);
-                $startRow += count($chunk);
-                unset($chunk); // Chunk referansını serbest bırak, GC yardımcı olsun
-            }
-        } else {
-            $sheet->fromArray($this->data, null, 'A1');
+        // Veriyi chunk'lar halinde yaz; $this->data referansını koruyarak kopyalamayı azalt.
+        // Eşiği düşük tut: her satır ~N kolon * Cell nesnesi = hızla MB'lara ulaşır.
+        $chunkSize = 2000;
+        $sheet->fromArray([$this->data[0]], null, 'A1');
+        $startRow = 2;
+        for ($i = 1; $i < $rowCount; $i += $chunkSize) {
+            $chunk = array_slice($this->data, $i, $chunkSize);
+            $sheet->fromArray($chunk, null, 'A' . $startRow);
+            $startRow += count($chunk);
+            unset($chunk);
         }
 
         // İlk satırı başlık olarak kabul et
-        if (count($this->data) > 0) {
-            $highestColumn = $sheet->getHighestColumn();
-            $headerRange = 'A1:' . $highestColumn . '1';
+        $highestColumn = $sheet->getHighestColumn();
+        $headerRange   = 'A1:' . $highestColumn . '1';
 
-            // Başlık stili uygula
-            if (!empty($this->headerStyle)) {
-                $sheet->getStyle($headerRange)->applyFromArray($this->headerStyle);
-            } else {
-                $this->applyDefaultHeaderStyle($headerRange);
-            }
+        if (!empty($this->headerStyle)) {
+            $sheet->getStyle($headerRange)->applyFromArray($this->headerStyle);
+        } else {
+            $this->applyDefaultHeaderStyle($headerRange);
+        }
 
-            // Otomatik filtre
-            if ($this->autoFilter) {
-                $sheet->setAutoFilter($headerRange);
-            }
+        if ($this->autoFilter) {
+            $sheet->setAutoFilter($headerRange);
         }
 
         // Kolon genişlikleri
@@ -419,16 +411,14 @@ class ExcelDriver extends BaseDriver
                 $sheet->getColumnDimension($column)->setWidth($width);
             }
         } else {
-            // Otomatik kolon genişliği - skip for large datasets (>5000 rows) for performance
-            $rowCount = count($this->data);
-            if ($rowCount <= 5000) {
-                // Only auto-size for smaller datasets (much faster)
-                foreach (range('A', $sheet->getHighestColumn()) as $column) {
+            // Auto-size sadece küçük veri setlerinde kullan; büyükte sabit genişlik yeterli.
+            // Auto-size tüm hücreleri yeniden okur → gereksiz RAM + CPU.
+            if ($rowCount <= 1000) {
+                foreach (range('A', $highestColumn) as $column) {
                     $sheet->getColumnDimension($column)->setAutoSize(true);
                 }
             } else {
-                // For large datasets, set a reasonable default width to avoid slow auto-sizing
-                foreach (range('A', $sheet->getHighestColumn()) as $column) {
+                foreach (range('A', $highestColumn) as $column) {
                     $sheet->getColumnDimension($column)->setWidth(15);
                 }
             }
@@ -544,10 +534,10 @@ class ExcelDriver extends BaseDriver
         if (!$writer instanceof Xlsx) {
             return;
         }
-        if ($rowCount > 1000) {
+        if ($rowCount > 500) {
             $writer->setPreCalculateFormulas(false);
         }
-        if ($rowCount > 5000) {
+        if ($rowCount > 1000) {
             $cacheDir = defined('WRITEPATH') ? (WRITEPATH . 'cache/phpspreadsheet/') : (sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'phpspreadsheet_cache');
             if (!is_dir($cacheDir)) {
                 @mkdir($cacheDir, 0755, true);
